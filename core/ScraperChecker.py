@@ -214,9 +214,12 @@ def get_video_info(video_id: str, retries: int = 2, use_turbo: bool = True, cook
                 return {"error": "Upcoming livestream"}
             elif "429" in error_msg or "too many requests" in error_msg:
                 if attempt < retries:
-                    time.sleep(random.uniform(2, 5))
+                    wait = 2 ** attempt  # exponential backoff
+                    # Using a print statement for now, as log_func is not available here
+                    print(f"[WARN] Rate limited, waiting {wait}s before retry...")
+                    time.sleep(wait)
                     continue
-                return {"error": "Rate limited"}
+                return {"error": "Rate limited (429)"}
             elif attempt < retries:
                 time.sleep(random.uniform(1, 3))
                 continue
@@ -338,7 +341,7 @@ def _scraper_worker_enhanced(args_batch: List[Tuple], batch_idx: int, tracker: P
         tracker.update(global_completed, current_item, batch_info)
 
         # Small delay để tránh rate limiting
-        time.sleep(random.uniform(0.15, 0.4))
+        time.sleep(random.uniform(0.5, 1.5))
 
         try:
             start_time = time.time()
@@ -637,7 +640,7 @@ def _checker_worker_enhanced(batch_items: List[Tuple[int, str]], batch_idx: int,
         global_completed = tracker.completed + local_idx
         tracker.update(global_completed, current_item, batch_info)
 
-        time.sleep(random.uniform(0.3, 0.7))  # Rate limiting
+        time.sleep(random.uniform(0.5, 1.5))  # Rate limiting
 
         try:
             start_time = time.time()
