@@ -192,6 +192,12 @@ def get_video_info(video_id: str, retries: int = 2, use_turbo: bool = True, cook
             with yt_dlp.YoutubeDL(opts) as ydl:
                 info = ydl.extract_info(f"https://www.youtube.com/watch?v={video_id}", download=False)
                 if info:
+                    # Fallback cho metadata
+                    info.setdefault('title', f"https://www.youtube.com/watch?v={video_id}")
+                    info.setdefault('view_count', info.get('view_count_approx'))
+                    if not info.get('upload_date') and info.get('timestamp'):
+                        # Convert timestamp (seconds) to datetime object and then format as YYYYMMDD
+                        info['upload_date'] = datetime.utcfromtimestamp(info['timestamp']).strftime("%Y%m%d")
                     return info
         except yt_dlp.utils.DownloadError as e:
             error_msg = str(e).lower()
@@ -222,7 +228,7 @@ def get_video_info(video_id: str, retries: int = 2, use_turbo: bool = True, cook
                 continue
             return {"error": f"Unexpected error: {str(e)[:80]}"}
     
-    return {"error": "Failed after retries"}
+    return {"error": "Metadata missing"}
 
 
 def get_channel_info_stable(channel_input: str, use_turbo: bool = True) -> Tuple[str, list]:
