@@ -37,7 +37,7 @@ def main(page: ft.Page):
         theme_btn.icon = Icons.LIGHT_MODE if page.theme_mode == ThemeMode.LIGHT else Icons.DARK_MODE
         page.update()
 
-    theme_btn = ft.IconButton(icon=Icons.LIGHT_MODE, tooltip="Chuyển giao diện", on_click=toggle_theme)
+    theme_btn = ft.IconButton(icon=Icons.LIGHT_MODE, tooltip="Chuyển giao diện")
 
     ratio_dd = ft.Dropdown(
         label="Bố cục", value="2/3 : 1/3",
@@ -211,14 +211,10 @@ def main(page: ft.Page):
     # --- Scraper
     scraper_channel = ft.TextField(label="URL / ID Kênh", expand=True, filled=True)
     scraper_out = ft.TextField(label="Thư mục xuất", expand=True, value=output_dir, disabled=True, filled=True)
-    scraper_browse = ft.OutlinedButton("📁 Chọn thư mục...", icon=Icons.FOLDER,
-                                       on_click=lambda _: folder_picker.get_directory_path(dialog_title="Chọn thư mục"))
+    scraper_browse = ft.OutlinedButton("📁 Chọn thư mục...", icon=Icons.FOLDER)
 
     scraper_cookies_text = ft.TextField(label="cookies.txt (optional)", expand=True, read_only=True, value="")
-    scraper_cookies_pick = ft.OutlinedButton("📁 Chọn cookies.txt", icon=Icons.FILE_OPEN,
-                                     on_click=lambda _: scraper_cookies_picker.pick_files(allow_multiple=False,
-                                                                                  dialog_title="Chọn cookies.txt",
-                                                                                  allowed_extensions=['txt']))
+    scraper_cookies_pick = ft.OutlinedButton("📁 Chọn cookies.txt", icon=Icons.FILE_OPEN)
 
     def on_scraper_cookies(e: ft.FilePickerResultEvent):
         if e.files: scraper_cookies_text.value = e.files[0].path; page.update()
@@ -232,6 +228,10 @@ def main(page: ft.Page):
         min=2, max=16, divisions=14, value=8, label="Workers: {value}",
         tooltip="Parallel processing threads. Higher = faster but more resource usage"
     )
+    scraper_use_browser_cookies = ft.Checkbox(label="Dùng cookies từ trình duyệt", value=False,
+                                             tooltip="Tự động dùng cookies từ trình duyệt (Chrome, Firefox, Edge, etc.)")
+    scraper_browser_cookie = ft.TextField(label="Tên trình duyệt", expand=True, value="chrome",
+                                          tooltip="Nhập tên trình duyệt: chrome, firefox, edge, safari, opera, vivaldi")
 
     def on_turbo_scraper_change(e):
         scraper_workers.disabled = not turbo_scraper_enabled.value
@@ -252,6 +252,7 @@ def main(page: ft.Page):
                            scraper_workers
                        ], spacing=8),
                        ft.Row([scraper_cookies_text, scraper_cookies_pick], spacing=8),
+                       ft.Row([scraper_use_browser_cookies, scraper_browser_cookie], spacing=8),
                    ], spacing=8),
                    expanded=False),
     ], scroll=ScrollMode.AUTO)
@@ -259,11 +260,7 @@ def main(page: ft.Page):
     # --- Checker
     checker_file_path = ""
     checker_file = ft.TextField(label="File .xlsx/.csv có cột 'ID Video'", expand=True, disabled=True, filled=True)
-    checker_browse_file = ft.OutlinedButton("📁 Chọn file...", icon=Icons.FOLDER_OPEN,
-                                            on_click=lambda _: file_picker.pick_files(allow_multiple=False,
-                                                                                      dialog_title="Chọn file .xlsx/.csv",
-                                                                                      allowed_extensions=['xlsx', 'xls',
-                                                                                                          'csv']))
+    checker_browse_file = ft.OutlinedButton("📁 Chọn file...", icon=Icons.FOLDER_OPEN)
 
     def on_checker_file(e: ft.FilePickerResultEvent):
         nonlocal checker_file_path
@@ -296,7 +293,9 @@ def main(page: ft.Page):
                        ft.Row([
                            ft.Text("Workers:", size=12, width=70),
                            checker_workers
-                       ], spacing=8)
+                       ], spacing=8),
+                       ft.Row([scraper_cookies_text, scraper_cookies_pick], spacing=8), # Use scraper cookies for checker
+                       ft.Row([scraper_use_browser_cookies, scraper_browser_cookie], spacing=8), # Use scraper browser cookies for checker
                    ], spacing=8),
                    expanded=False),
     ], scroll=ScrollMode.AUTO)
@@ -306,12 +305,7 @@ def main(page: ft.Page):
         label="ID/URL Video • File (.xlsx/.csv) • Playlist/Channel URLs",
         expand=True, filled=True, multiline=True, max_lines=3
     )
-    downloader_pick_file = ft.OutlinedButton("📁 Chọn file danh sách...", icon=Icons.ATTACH_FILE,
-                                             on_click=lambda _: d_file_picker.pick_files(allow_multiple=False,
-                                                                                         dialog_title="Chọn file .xlsx/.csv",
-                                                                                         allowed_extensions=['xlsx',
-                                                                                                             'xls',
-                                                                                                             'csv']))
+    downloader_pick_file = ft.OutlinedButton("📁 Chọn file danh sách...", icon=Icons.ATTACH_FILE)
 
     def on_dl_file(e: ft.FilePickerResultEvent):
         if e.files: downloader_input.value = e.files[0].path; page.update()
@@ -333,15 +327,10 @@ def main(page: ft.Page):
     con_frags = ft.Slider(min=4, max=20, divisions=16, value=12, label="{value} fragments/thread")
 
     downloader_out = ft.TextField(label="Download Directory", expand=True, value=output_dir, disabled=True, filled=True)
-    downloader_browse_out = ft.OutlinedButton("📁 Chọn thư mục...", icon=Icons.FOLDER,
-                                              on_click=lambda _: folder_picker.get_directory_path(
-                                                  dialog_title="Chọn thư mục tải về"))
+    downloader_browse_out = ft.OutlinedButton("📁 Chọn thư mục...", icon=Icons.FOLDER)
 
     cookies_text = ft.TextField(label="cookies.txt (optional)", expand=True, read_only=True, value="")
-    cookies_pick = ft.OutlinedButton("📁 Chọn cookies.txt", icon=Icons.FILE_OPEN,
-                                     on_click=lambda _: cookies_picker.pick_files(allow_multiple=False,
-                                                                                  dialog_title="Chọn cookies.txt",
-                                                                                  allowed_extensions=['txt']))
+    cookies_pick = ft.OutlinedButton("📁 Chọn cookies.txt", icon=Icons.FILE_OPEN)
 
     def on_cookies(e: ft.FilePickerResultEvent):
         if e.files: cookies_text.value = e.files[0].path; page.update()
@@ -351,6 +340,8 @@ def main(page: ft.Page):
     proxy_text = ft.TextField(label="Proxy (http://user:pass@host:port)", expand=True, value="")
     use_archive = ft.Checkbox(label="📝 Skip duplicates (archive)", value=True)
     use_aria2 = ft.Checkbox(label="🚀 Use aria2c if available", value=False)
+    downloader_use_browser_cookies = ft.Checkbox(label="Dùng cookies từ trình duyệt", value=False)
+    downloader_browser_cookie = ft.TextField(label="Tên trình duyệt", value="chrome", expand=True)
 
     downloader_panel = ft.Column([
         group_tile(Icons.LINK, "Input", ft.Row([downloader_input, downloader_pick_file], spacing=8), expanded=True),
@@ -389,10 +380,9 @@ def main(page: ft.Page):
     start_btn = ft.FilledButton("🚀 START ENHANCED", icon=Icons.ROCKET_LAUNCH,
                                 bgcolor=Colors.ORANGE, color=Colors.WHITE, height=55,
                                 style=ft.ButtonStyle(text_style=ft.TextStyle(weight=FontWeight.BOLD, size=16)))
-    cancel_btn = ft.OutlinedButton("⏹️ STOP", icon=Icons.STOP, height=40, on_click=lambda _: stop_event.set())
-    clear_log_btn = ft.OutlinedButton("🗑️ Clear", icon=Icons.CLEAR, height=40,
-                                      on_click=lambda _: (log_list.controls.clear(), page.update()))
-    save_log_btn = ft.OutlinedButton("💾 Save Log", icon=Icons.SAVE, height=40, on_click=lambda _: save_log())
+    cancel_btn = ft.OutlinedButton("⏹️ STOP", icon=Icons.STOP, height=40)
+    clear_log_btn = ft.OutlinedButton("🗑️ Clear", icon=Icons.CLEAR, height=40)
+    save_log_btn = ft.OutlinedButton("💾 Save Log", icon=Icons.SAVE, height=40)
 
     def save_log():
         path = os.path.join(output_dir, f"enhanced_log_{time.strftime('%Y%m%d_%H%M%S')}.txt")
@@ -525,6 +515,33 @@ def main(page: ft.Page):
     # ===== Page body =====
     page.add(ft.Container(content=root_row, padding=padding.all(12), expand=True))
 
+    # ===== UI Control Assignments (Centralized) =====
+    # These assignments are moved here to ensure all controls are defined before their handlers are assigned.
+
+    # Assignments for File Pickers (moved from their original scattered locations)
+    folder_picker.on_result = on_folder_chosen
+    scraper_cookies_picker.on_result = on_scraper_cookies
+    d_file_picker.on_result = on_dl_file
+    cookies_picker.on_result = on_cookies
+    file_picker.on_result = on_checker_file
+
+    # Assignments for UI Control Events (on_click, on_change)
+    theme_btn.on_click = toggle_theme
+    scraper_browse.on_click = lambda _: folder_picker.get_directory_path(dialog_title="Chọn thư mục")
+    scraper_cookies_pick.on_click = lambda _: scraper_cookies_picker.pick_files(allow_multiple=False, dialog_title="Chọn cookies.txt", allowed_extensions=['txt'])
+    turbo_scraper_enabled.on_change = on_turbo_scraper_change
+    downloader_pick_file.on_click = lambda _: d_file_picker.pick_files(allow_multiple=False, dialog_title="Chọn file .xlsx/.csv", allowed_extensions=['xlsx', 'xls', 'csv'])
+    downloader_browse_out.on_click = lambda _: folder_picker.get_directory_path(dialog_title="Chọn thư mục tải về")
+    cookies_pick.on_click = lambda _: cookies_picker.pick_files(allow_multiple=False, dialog_title="Chọn cookies.txt", allowed_extensions=['txt'])
+    checker_browse_file.on_click = lambda _: file_picker.pick_files(allow_multiple=False, dialog_title="Chọn file .xlsx/.csv", allowed_extensions=['xlsx', 'xls', 'csv'])
+    turbo_checker_enabled.on_change = on_turbo_checker_change
+    tabs.on_change = update_left_panel
+    ratio_dd.on_change = on_ratio_change
+    cancel_btn.on_click = lambda _: stop_event.set()
+    clear_log_btn.on_click = lambda _: (log_list.controls.clear(), page.update())
+    save_log_btn.on_click = lambda _: save_log()
+
+
     # ===== Enhanced Actions =====
     def on_start(_=None):
         stop_event.clear()
@@ -638,6 +655,8 @@ def main(page: ft.Page):
     log("🚀 ENHANCED MODE ACTIVATED! Welcome to AIO Enhanced Edition.", "[System]")
     log("⚡ Features: Real-time ETA, detailed progress tracking, and enhanced logging.", "[System]")
     log("💡 Pro tip: Monitor system resources and adjust workers accordingly.", "[System]")
+
+    start_btn.on_click = on_start
 
 
 if __name__ == "__main__":

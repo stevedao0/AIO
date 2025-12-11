@@ -163,10 +163,10 @@ def _cached_normalize_input(channel: str) -> str:
     return c
 
 
-def get_video_info(video_id: str, retries: int = 2, use_turbo: bool = True, cookies_file: Optional[str] = None) -> dict:
+def get_video_info(video_id: str, retries: int = 2, use_turbo: bool = True, cookies_file: Optional[str] = None, cookies_from_browser: Optional[str] = None) -> dict:
     """Lấy thông tin video với retry và fallback modes"""
 
-    def _get_opts(turbo: bool, cookies: Optional[str]) -> dict:
+    def _get_opts(turbo: bool, cookies: Optional[str], browser_cookies: Optional[str]) -> dict:
         opts = {
             'quiet': True, 'skip_download': True, 'nocheckcertificate': True,
             'ignoreerrors': True, 'extractor_retries': 1, 'retries': 1,
@@ -179,13 +179,15 @@ def get_video_info(video_id: str, retries: int = 2, use_turbo: bool = True, cook
             'ignoreerrors': False, 'extractor_retries': 3, 'retries': 3,
             'socket_timeout': 20
         }
-        if cookies and os.path.exists(cookies):
+        if browser_cookies:
+            opts['cookiesfrombrowser'] = (browser_cookies,)
+        elif cookies and os.path.exists(cookies):
             opts['cookiefile'] = cookies
         return opts
 
     current_turbo = use_turbo
     for attempt in range(retries + 1):
-        opts = _get_opts(current_turbo, cookies_file)
+        opts = _get_opts(current_turbo, cookies_file, cookies_from_browser)
         try:
             with yt_dlp.YoutubeDL(opts) as ydl:
                 info = ydl.extract_info(f"https://www.youtube.com/watch?v={video_id}", download=False)
@@ -311,7 +313,7 @@ def get_shorts_info_stable(channel_input: str, use_turbo: bool = True) -> Tuple[
     return cid, []
 
 
-def _scraper_worker_enhanced(args_batch: List[Tuple], batch_idx: int, tracker: ProgressTracker, cookies_file: Optional[str] = None) -> List[dict]:
+def _scraper_worker_enhanced(args_batch: List[Tuple], batch_idx: int, tracker: ProgressTracker, cookies_file: Optional[str] = None, cookies_from_browser: Optional[str] = None) -> List[dict]:
     """Enhanced worker với detailed progress tracking"""
     results = []
     batch_size = len(args_batch)
@@ -334,7 +336,7 @@ def _scraper_worker_enhanced(args_batch: List[Tuple], batch_idx: int, tracker: P
 
         try:
             start_time = time.time()
-            info = get_video_info(vid, retries=2, use_turbo=True, cookies_file=cookies_file)
+            info = get_video_info(vid, retries=2, use_turbo=True, cookies_file=cookies_file, cookies_from_browser=cookies_from_browser)
             process_time = time.time() - start_time
 
             # Log thời gian xử lý
@@ -384,7 +386,8 @@ def run_scraper(channel_input: str, out_folder: str,
                 stop_event: Optional[object] = None,
                 turbo_mode: bool = True,
                 max_workers: int = None,
-                cookies_file: Optional[str] = None) -> Optional[str]:
+                cookies_file: Optional[str] = None,
+                cookies_from_browser: Optional[str] = None) -> Optional[str]:
     """
     ENHANCED SCRAPER với detailed progress tracking và ETA
     detail_callback: callback nhận dict với thông tin chi tiết
@@ -462,7 +465,7 @@ def run_scraper(channel_input: str, out_folder: str,
             with ProcessPoolExecutor(max_workers=max_workers) as executor:
                 # Submit all batches
                 futures = {
-                    executor.submit(_scraper_worker_enhanced, batch, i, tracker, cookies_file): i
+                    executor.submit(_scraper_worker_enhanced, batch, i, tracker, cookies_file, cookies_from_browser): i
                     for i, batch in enumerate(batches)
                 }
 
@@ -531,7 +534,7 @@ def run_scraper(channel_input: str, out_folder: str,
         with ProcessPoolExecutor(max_workers=max_workers) as executor:
             single_batches = [(([arg], 0, tracker)) for arg in args]
             futures = {
-                executor.submit(_scraper_worker_enhanced, [batch[0]], batch[1], batch[2], cookies_file): i
+                executor.submit(_scraper_worker_enhanced, [batch[0]], batch[1], batch[2], cookies_file, cookies_from_browser): i
                 for i, batch in enumerate(single_batches)
             }
 
@@ -573,6 +576,11 @@ def run_scraper(channel_input: str, out_folder: str,
         log_func and log_func('❌ No results obtained', prefix='EnhancedScraper')
         return None
 
+    # RETRY LOGIC for scraper
+    if any(r.get('Tình trạng') == 'Metadata missing' for r in results):
+        log_func and log_func("🔄 Attempting to fix 'Metadata missing' items...", prefix='EnhancedScraper')
+        results = retry_metadata_missing(results, retries=2, log_func=log_func, cookies_file=cookies_file, cookies_from_browser=cookies_from_browser)
+
     # Process results
     df = pd.DataFrame(results)
 
@@ -610,8 +618,7 @@ def run_scraper(channel_input: str, out_folder: str,
 
 
 # ===== ENHANCED CHECKER với detailed progress =====
-def _checker_worker_enhanced(batch_items: List[Tuple[int, str]], batch_idx: int, tracker: ProgressTracker) -> List[
-    dict]:
+def _checker_worker_enhanced(batch_items: List[Tuple[int, str]], batch_idx: int, tracker: ProgressTracker, cookies_file: Optional[str] = None, cookies_from_browser: Optional[str] = None) -> List[dict]:
     """Enhanced checker worker với progress tracking"""
     results = []
     batch_size = len(batch_items)
@@ -628,7 +635,7 @@ def _checker_worker_enhanced(batch_items: List[Tuple[int, str]], batch_idx: int,
 
         try:
             start_time = time.time()
-            info = get_video_info(vid, retries=2, use_turbo=True)
+            info = get_video_info(vid, retries=2, use_turbo=True, cookies_file=cookies_file, cookies_from_browser=cookies_from_browser)
             process_time = time.time() - start_time
 
             status_info = f"Checked in {process_time:.1f}s"
@@ -657,12 +664,65 @@ def _checker_worker_enhanced(batch_items: List[Tuple[int, str]], batch_idx: int,
     return results
 
 
+def retry_metadata_missing(results: List[dict], retries: int = 2, log_func: Optional[Callable] = None, cookies_file: Optional[str] = None, cookies_from_browser: Optional[str] = None) -> List[dict]:
+    """
+    Hàm này sẽ duyệt qua danh sách kết quả scrape/check,
+    tìm các video có tình trạng 'Metadata missing',
+    và thử gọi lại get_video_info để lấy dữ liệu chi tiết.
+    """
+    fixed_results = []
+    count = 0
+    for item in results:
+        if item.get('Tình trạng') == 'Metadata missing':
+            vid = item.get('ID Video')
+            msg = f"[RETRY] Trying to fetch metadata again for {vid}..."
+            if log_func:
+                log_func(msg, prefix='Retry')
+            else:
+                print(msg)
+            
+            info = get_video_info(vid, retries=retries, use_turbo=False, cookies_file=cookies_file, cookies_from_browser=cookies_from_browser)
+
+            if info and 'error' not in info:
+                # Nếu lấy được dữ liệu, cập nhật lại record
+                cid_real = Utils.extract_channel_id(info)
+                name_real = info.get('uploader') or item.get('Tên Kênh')
+                views = info.get('view_count') or info.get('view_count_approx') or 'N/A'
+                date_fmt = Utils.format_date(info.get('upload_date'))
+
+                item.update({
+                    'Tên Kênh': name_real,
+                    'ID Kênh': cid_real,
+                    'Tên Video': info.get('title') or 'N/A',
+                    'Link Video': info.get('webpage_url', f'https://www.youtube.com/watch?v={vid}'),
+                    'Thời gian': Utils.format_duration(info.get('duration')),
+                    'Ngày xuất bản': date_fmt,
+                    'Lượt xem': views,
+                    'Tình trạng': 'OK'
+                })
+                msg_ok = f"[FIXED] Metadata recovered for {vid}"
+                if log_func:
+                    log_func(msg_ok, prefix='Retry')
+                else:
+                    print(msg_ok)
+                count += 1
+        fixed_results.append(item)
+    
+    if count > 0 and log_func:
+        log_func(f"Recovered {count} items with missing metadata", prefix='Retry')
+        
+    return fixed_results
+
+
+
 def run_checker(fp: str, max_workers: int = 6,
                 progress_callback: Optional[Callable[[int, int], None]] = None,
                 detail_callback: Optional[Callable[[Dict[str, Any]], None]] = None,  # NEW
                 log_func: Optional[Callable] = None,
                 stop_event: Optional[object] = None,
-                turbo_mode: bool = True) -> Optional[str]:
+                turbo_mode: bool = True,
+                cookies_file: Optional[str] = None,
+                cookies_from_browser: Optional[str] = None) -> Optional[str]:
     """ENHANCED CHECKER với detailed progress"""
 
     def read_input_file(fp: str) -> Optional[pd.DataFrame]:
@@ -714,7 +774,7 @@ def run_checker(fp: str, max_workers: int = 6,
 
         with ProcessPoolExecutor(max_workers=max_workers) as executor:
             futures = {
-                executor.submit(_checker_worker_enhanced, batch, i, tracker): i
+                executor.submit(_checker_worker_enhanced, batch, i, tracker, cookies_file, cookies_from_browser): i
                 for i, batch in enumerate(batches)
             }
             done_batches = 0
@@ -760,7 +820,7 @@ def run_checker(fp: str, max_workers: int = 6,
         with ProcessPoolExecutor(max_workers=max_workers) as executor:
             single_batches = [(([item], 0, tracker)) for item in items]
             futures = {
-                executor.submit(_checker_worker_enhanced, [batch[0]], batch[1], batch[2]): i
+                executor.submit(_checker_worker_enhanced, [batch[0]], batch[1], batch[2], cookies_file, cookies_from_browser): i
                 for i, batch in enumerate(single_batches)
             }
             done = 0
@@ -787,6 +847,11 @@ def run_checker(fp: str, max_workers: int = 6,
     tracker.update(tracker.total, "Check complete", "Saving results...")
     if detail_callback:
         detail_callback(tracker.get_progress_info())
+
+    # RETRY LOGIC
+    if any(r.get('Tình trạng') == 'Metadata missing' for r in results):
+        log_func and log_func("🔄 Attempting to fix 'Metadata missing' items...", prefix='EnhancedChecker')
+        results = retry_metadata_missing(results, retries=2, log_func=log_func, cookies_file=cookies_file, cookies_from_browser=cookies_from_browser)
 
     df_out = pd.DataFrame(results)
 
@@ -828,6 +893,7 @@ def _build_ydl_opts_for_download(
         concurrent_frags: int = 8,
         merge_to: str = 'mp4',
         cookies_file: Optional[str] = None,
+        cookies_from_browser: Optional[str] = None,
         proxy: Optional[str] = None,
         write_thumbnail: bool = False,
         add_metadata: bool = True,
@@ -853,7 +919,10 @@ def _build_ydl_opts_for_download(
         'ffmpeg_location': os.environ.get('FFMPEG_LOCATION'),
     }
     if proxy: ydl_opts['proxy'] = proxy
-    if cookies_file and os.path.exists(cookies_file): ydl_opts['cookiefile'] = cookies_file
+    if cookies_from_browser:
+        ydl_opts['cookiesfrombrowser'] = (cookies_from_browser,)
+    elif cookies_file and os.path.exists(cookies_file):
+        ydl_opts['cookiefile'] = cookies_file
     if download_archive_path: ydl_opts['download_archive'] = download_archive_path
     if rate_limit: ydl_opts['ratelimit'] = rate_limit
     if throttled_rate: ydl_opts['throttled_rate'] = throttled_rate
@@ -879,6 +948,7 @@ def download_video(
         quality: str = 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best',
         audio_only: bool = False, concurrent_frags: int = 8,
         cookies_file: Optional[str] = None, proxy: Optional[str] = None,
+        cookies_from_browser: Optional[str] = None,
         write_thumbnail: bool = False, embed_thumbnail: bool = False,
         add_metadata: bool = True, download_archive_path: Optional[str] = None,
         enable_aria2: bool = False, rate_limit: Optional[int] = None,
@@ -893,6 +963,7 @@ def download_video(
     ydl_opts = _build_ydl_opts_for_download(
         out_folder=out_folder, quality=quality, audio_only=audio_only,
         concurrent_frags=concurrent_frags, cookies_file=cookies_file, proxy=proxy,
+        cookies_from_browser=cookies_from_browser,
         write_thumbnail=write_thumbnail, embed_thumbnail=embed_thumbnail, add_metadata=add_metadata,
         download_archive_path=download_archive_path, enable_aria2=enable_aria2,
         rate_limit=rate_limit, throttled_rate=throttled_rate, http_chunk_size=http_chunk_size,
@@ -978,6 +1049,7 @@ def run_downloader(
         quality: str = 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best',
         audio_only: bool = False, max_workers: int = 2, concurrent_frags: int = 8,
         cookies_file: Optional[str] = None, proxy: Optional[str] = None,
+        cookies_from_browser: Optional[str] = None,
         progress_callback: Optional[Callable[[int, int], None]] = None,
         detail_callback: Optional[Callable[[dict], None]] = None,
         log_func: Optional[Callable[[str, str], None]] = None,
@@ -1031,6 +1103,7 @@ def run_downloader(
         return download_video(
             vid, out_folder=out_folder, quality=quality, audio_only=audio_only,
             concurrent_frags=concurrent_frags, cookies_file=cookies_file, proxy=proxy,
+            cookies_from_browser=cookies_from_browser,
             progress_callback=detail_callback, log_func=_log, stop_event=stop_event,
             download_archive_path=archive_path, enable_aria2=enable_aria2
         )
