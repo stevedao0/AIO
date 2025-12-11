@@ -228,6 +228,8 @@ def main(page: ft.Page):
         min=2, max=16, divisions=14, value=8, label="Workers: {value}",
         tooltip="Parallel processing threads. Higher = faster but more resource usage"
     )
+    scraper_use_browser_cookies = ft.Checkbox(label="Dùng cookies từ trình duyệt", value=False)
+    scraper_browser_cookie = ft.TextField(label="Tên trình duyệt", expand=True, value="chrome")
     scraper_use_browser_cookies = ft.Checkbox(label="Dùng cookies từ trình duyệt", value=False,
                                              tooltip="Tự động dùng cookies từ trình duyệt (Chrome, Firefox, Edge, etc.)")
     scraper_browser_cookie = ft.TextField(label="Tên trình duyệt", expand=True, value="chrome",
@@ -340,6 +342,8 @@ def main(page: ft.Page):
     proxy_text = ft.TextField(label="Proxy (http://user:pass@host:port)", expand=True, value="")
     use_archive = ft.Checkbox(label="📝 Skip duplicates (archive)", value=True)
     use_aria2 = ft.Checkbox(label="🚀 Use aria2c if available", value=False)
+    downloader_use_browser_cookies = ft.Checkbox(label="Dùng cookies từ trình duyệt", value=False)
+    downloader_browser_cookie = ft.TextField(label="Tên trình duyệt", value="chrome", expand=True)
     downloader_use_browser_cookies = ft.Checkbox(label="Dùng cookies từ trình duyệt", value=False)
     downloader_browser_cookie = ft.TextField(label="Tên trình duyệt", value="chrome", expand=True)
 
@@ -542,6 +546,34 @@ def main(page: ft.Page):
     save_log_btn.on_click = lambda _: save_log()
 
 
+    # ===== UI Control Assignments (Centralized) =====
+    # These assignments are moved here to ensure all controls are defined before their handlers are assigned.
+
+    # Assignments for File Pickers (moved from their original scattered locations)
+    folder_picker.on_result = on_folder_chosen
+    scraper_cookies_picker.on_result = on_scraper_cookies
+    d_file_picker.on_result = on_dl_file
+    cookies_picker.on_result = on_cookies
+    file_picker.on_result = on_checker_file
+
+    # Assignments for UI Control Events (on_click, on_change)
+    theme_btn.on_click = toggle_theme
+    scraper_browse.on_click = lambda _: folder_picker.get_directory_path(dialog_title="Chọn thư mục")
+    scraper_cookies_pick.on_click = lambda _: scraper_cookies_picker.pick_files(allow_multiple=False, dialog_title="Chọn cookies.txt", allowed_extensions=['txt'])
+    turbo_scraper_enabled.on_change = on_turbo_scraper_change
+    downloader_pick_file.on_click = lambda _: d_file_picker.pick_files(allow_multiple=False, dialog_title="Chọn file .xlsx/.csv", allowed_extensions=['xlsx', 'xls', 'csv'])
+    downloader_browse_out.on_click = lambda _: folder_picker.get_directory_path(dialog_title="Chọn thư mục tải về")
+    cookies_pick.on_click = lambda _: cookies_picker.pick_files(allow_multiple=False, dialog_title="Chọn cookies.txt", allowed_extensions=['txt'])
+    checker_browse_file.on_click = lambda _: file_picker.pick_files(allow_multiple=False, dialog_title="Chọn file .xlsx/.csv", allowed_extensions=['xlsx', 'xls', 'csv'])
+    turbo_checker_enabled.on_change = on_turbo_checker_change
+    tabs.on_change = update_left_panel
+    ratio_dd.on_change = on_ratio_change
+    cancel_btn.on_click = lambda _: stop_event.set()
+    clear_log_btn.on_click = lambda _: (log_list.controls.clear(), page.update())
+    save_log_btn.on_click = lambda _: save_log()
+
+
+
     # ===== Enhanced Actions =====
     def on_start(_=None):
         stop_event.clear()
@@ -576,15 +608,12 @@ def main(page: ft.Page):
 
                     # ===== ENHANCED SCRAPER CALL với detail_callback =====
                     res = run_scraper(
-                        scraper_channel.value.strip(),
-                        scraper_out.value,
-                        log_func=log,
-                        progress_callback=overall_progress,
-                        detail_callback=detail_progress,  # ⭐ NEW: Detailed callback
-                        stop_event=stop_event,
-                        turbo_mode=turbo_scraper_enabled.value,
+                        scraper_channel.value.strip(), scraper_out.value, log_func=log,
+                        progress_callback=overall_progress, detail_callback=detail_progress,
+                        stop_event=stop_event, turbo_mode=turbo_scraper_enabled.value,
                         max_workers=int(scraper_workers.value) if turbo_scraper_enabled.value else 4,
-                        cookies_file=scraper_cookies_text.value or None
+                        cookies_file=scraper_cookies_text.value or None,
+                        cookies_from_browser=scraper_browser_cookie.value.strip() if scraper_use_browser_cookies.value else None
                     )
 
                 elif tabs.selected_index == 1:  # ENHANCED CHECKER
@@ -596,13 +625,11 @@ def main(page: ft.Page):
 
                     # ===== ENHANCED CHECKER CALL với detail_callback =====
                     res = run_checker(
-                        checker_file.value,
-                        max_workers=int(checker_workers.value) if turbo_checker_enabled.value else 3,
-                        progress_callback=overall_progress,
-                        detail_callback=detail_progress,  # ⭐ NEW: Detailed callback
-                        log_func=log,
-                        stop_event=stop_event,
-                        turbo_mode=turbo_checker_enabled.value
+                        checker_file.value, max_workers=int(checker_workers.value) if turbo_checker_enabled.value else 3,
+                        progress_callback=overall_progress, detail_callback=detail_progress, log_func=log,
+                        stop_event=stop_event, turbo_mode=turbo_checker_enabled.value,
+                        cookies_file=scraper_cookies_text.value or None,
+                        cookies_from_browser=scraper_browser_cookie.value.strip() if scraper_use_browser_cookies.value else None
                     )
 
                 else:  # ENHANCED DOWNLOADER
@@ -618,6 +645,7 @@ def main(page: ft.Page):
                         quality=quality.value, audio_only=audio_only.value,
                         max_workers=int(threads.value), concurrent_frags=int(con_frags.value),
                         cookies_file=cookies_text.value or None, proxy=proxy_text.value or None,
+                        cookies_from_browser=downloader_browser_cookie.value.strip() if downloader_use_browser_cookies.value else None,
                         progress_callback=overall_progress, detail_callback=detail_progress,
                         log_func=log, enable_aria2=use_aria2.value, use_archive=use_archive.value,
                         stop_event=stop_event
@@ -655,6 +683,8 @@ def main(page: ft.Page):
     log("🚀 ENHANCED MODE ACTIVATED! Welcome to AIO Enhanced Edition.", "[System]")
     log("⚡ Features: Real-time ETA, detailed progress tracking, and enhanced logging.", "[System]")
     log("💡 Pro tip: Monitor system resources and adjust workers accordingly.", "[System]")
+
+    start_btn.on_click = on_start
 
     start_btn.on_click = on_start
 
